@@ -1,0 +1,782 @@
+{
+  "name": "Insane Youtube Automation!",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "7fc685a1-d150-41aa-950a-dd0050e543cf",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You create video concepts based on the user query.\n\nYou output the following in JSON:\n\n{\n   \"Intro\": \"40-70 characters\",\n   \"Base\": \"280-350 characters\",\n   \"CTA\": \"55 characters\"\n}\n\"Title\": \"30-50 characters (Short and engaging), Keep in curiosity-driven (e.g., \"I tried THIS for 7 Days Crazy Results!')\",\n\"Description\": \"50-150 characters (Shorter, with key hashtags), hook.\nAdd context, CTA, and hashtags.\"\n}\n\n\n\n",
+              "role": "system"
+            },
+            {
+              "content": "<user-query>\nVideo Ideas\n</user-query>"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        208,
+        0
+      ],
+      "id": "4060112f-1853-48e3-a63f-b1da779fd7fa",
+      "name": "Ideator",
+      "credentials": {
+        "openAiApi": {
+          "id": "JhK6oCCjC77REako",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fc122090-80f9-4be0-a739-f66e6b16a90c",
+              "name": "Script",
+              "value": "={{ $json.message.content.Intro }} {{ $json.message.content.Base }} {{ $json.message.content.CTA }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        560,
+        0
+      ],
+      "id": "baaf8ac4-4e6e-47c0-9d78-36e462b85592",
+      "name": "Script"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.elevenlabs.io/v1/text-to-speech/N2lVS1w4EtoT3dr4eOWO/with-timestamps?output_format=mp3_44100_128",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xi-api-key",
+              "value": "sk_4ba1778e48da28ad91275038e4815c6f3647d84fb9569679"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $json.Script }}"
+            },
+            {
+              "name": "model_id",
+              "value": "eleven_multilingual_v2"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        768,
+        0
+      ],
+      "id": "2a8cf32f-a19d-47ca-953a-d6f77cceaf45",
+      "name": "Script Generator"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://prod.0codekit.com/code/python",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "auth",
+              "value": "ghr9ozoxq1TX3X_D5A4lhELhl5pjJ-pHzZqAklMydgU"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "=# coding: utf-8\nimport json\n\n# --- Variable Injection (n8n tarafından dolduruluyor)\naudio_base64 = \"{{ $json.audio_base64 }}\"\nalignment_str = r'''{{ JSON.stringify($json.alignment).replace(/\\u2014/g, '-') }}'''\nnormalized_alignment_str = r'''{{ JSON.stringify($json_normalized_alignment).replace(/\\u2014/g, '-') }}'''\n\n# ASCII dışındaki karakterleri temizle\nalignment_str = alignment_str.encode('ascii', 'ignore').decode('ascii')\nnormalized_alignment_str = normalized_alignment_str.encode('ascii', 'ignore').decode('ascii')\n\n# JSON parse (boş veya hatalıysa {} yap)\ntry:\n    alignment = json.loads(alignment_str) if alignment_str.strip() else {}\nexcept json.JSONDecodeError:\n    alignment = {}\n\ntry:\n    normalized_alignment = json.loads(normalized_alignment_str) if normalized_alignment_str.strip() else {}\nexcept json.JSONDecodeError:\n    normalized_alignment = {}\n\n\ndef segment_audio_data(alignment, segment_duration=6.8):\n    \"\"\"\n    alignment sözlüğünü alır, karakterlere göre ses segmentlerine böler.\n    \"\"\"\n    characters = alignment.get(\"characters\", [])\n    try:\n        start_times = [float(x) for x in alignment.get(\"character_start_times_seconds\", [])]\n        end_times = [float(x) for x in alignment.get(\"character_end_times_seconds\", [])]\n    except Exception:\n        start_times = []\n        end_times = []\n\n    total_duration = end_times[-1] if end_times else 0.0\n    segments = []\n\n    if 0 < total_duration < segment_duration:\n        seg_text = \"\".join(characters).strip()\n        segments.append({\n            \"words\": seg_text,\n            \"id\": 1,\n            \"duration\": round(total_duration, 2)\n        })\n\n    elif total_duration >= segment_duration:\n        segment_id = 1\n        num_segments = int(total_duration // segment_duration)\n        remainder = total_duration % segment_duration\n\n        for i in range(num_segments):\n            seg_start = i * segment_duration\n            seg_end = (i + 1) * segment_duration\n            seg_chars = [characters[idx] for idx, t in enumerate(start_times) if seg_start <= t < seg_end]\n            seg_text = \"\".join(seg_chars).strip()\n            segments.append({\n                \"words\": seg_text,\n                \"id\": segment_id,\n                \"duration\": segment_duration\n            })\n            segment_id += 1\n\n        if remainder > 0:\n            seg_start = num_segments * segment_duration\n            seg_chars = [characters[idx] for idx, t in enumerate(start_times) if seg_start <= t < total_duration]\n            seg_text = \"\".join(seg_chars).strip()\n            segments.append({\n                \"words\": seg_text,\n                \"id\": segment_id,\n                \"duration\": round(remainder, 2)\n            })\n\n    return segments\n\n\ntry:\n    segments = segment_audio_data(alignment, segment_duration=6.8)\n    result = {\"data\": segments}\nexcept Exception as e:\n    result = {\n        \"data\": {\n            \"error\": \"Processing failed\",\n            \"details\": str(e)\n        }\n    }\n"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        976,
+        0
+      ],
+      "id": "d438491c-8d2e-4ae2-b10f-0c84c29a08a6",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "result.data",
+        "include": "allOtherFields",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1184,
+        0
+      ],
+      "id": "10b7d65a-86ab-45f7-9152-e1aefc42e39b",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an image prompt generator agent for video production. Your role is to create starting frames for a longer video by transforming script segments into visually descriptive image prompts.\nOutput a JSON object containing the prompt for the current script\nsegment that you are presented with:\n{\n   \"Prompt\": \"enter prompt here\"\n}\n\nYour prompts should visually describe the starting frame for that 6- second scene and set the tone for the video scene you receive.\n\nIMPORTANT INSTRUCTIONS:\n- Never include text in the images, it cannot be animated later -Always include the keyword \"in the style of CNSTLL\" in your prompt \n- Never exceed 240 characters in your prompt\n- Keep images EXTREMELY simple, don't make things that the video generation model will fail to animate, ai is not good at humans, complex movements, etc. BUT it's really good at landscapes, POV shots, close ups, etc.\n\n-----\nExample Prompts for The Style I'm Going For:\n\n- in the style of CNSTLL , urban landscape, people fishing on Galata  bridge in Istanbul at night\n\n- in the style of CNSTLL, a white car parked in front of a gas station, night time, cinestill 800T\n\n- in the style of CNSTLL , photo of New York City at night, 4k\n\n- in the style of CNSTLL, an urban landscape with street sellers and  a fish market at night, photorealistic\n\n--------\n\nStyle Preferences:\n- Always make the prompts a night time scene\n- Use lots of night time ambient lighting and neon lighting\n- Go for wide shots\n- Use 4k and cinestill 800t",
+              "role": "system"
+            },
+            {
+              "content": "=Here's the full script:\n{{ $('Script').item.json.Script }}\n\nHere's the current scene:\nscript portion: {{ $json['result.data'].words }}\nscript portion: {{ $json['result.data'].id }}\n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1392,
+        0
+      ],
+      "id": "7ebbdeb0-df3d-4392-8d08-2e597d5cba89",
+      "name": "Image Prompter",
+      "credentials": {
+        "openAiApi": {
+          "id": "JhK6oCCjC77REako",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.replicate.com/v1/predictions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_REPLICATE_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "wait"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"version\": \"6e4a938f85952bdabcc15aa329178c4d681c52bf25a0342403287dc26944661d\",\n  \"input\": {\n    \"prompt\": \"{{ $json.message.content.Prompt }}\",\n    \"go_fast\": true,\n    \"guidance\": 3.5,\n    \"num_outputs\": 1,\n    \"aspect_ratio\": \"9:16\",\n    \"output_format\": \"webp\",\n    \"output_quality\": 80,\n    \"prompt_strength\": 0.8,\n    \"num_inference_steps\": 28\n  }\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        -16
+      ],
+      "id": "e55adc4a-9388-4329-be9d-bc8d150aa61c",
+      "name": "Request IMAGE"
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1936,
+        -16
+      ],
+      "id": "4c8bde99-9186-4ba0-bce7-7ca577d72681",
+      "name": "Wait",
+      "webhookId": "1ad83054-b3f9-4074-aea7-cd9f5e0bb927"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.urls.get }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer r8_M2AdJXCL5rR4hXYJ1t8xKK0VBGgAGYW28QZcP"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2144,
+        -16
+      ],
+      "id": "4f29fd98-9684-43de-a271-f81c0c87d561",
+      "name": "Get Image"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.replicate.com/v1/models/minimax/video-01/predictions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_REPLICATE_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "wait"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"input\": {\n    \"prompt\": \"A vibrant, colorful lightbulb glowing amid a dark background, symbolizing fresh ideas, minimalist style, soft bokeh lights around, in the style of CNSTLL\",\n    \"prompt_optimizer\": true,\n    \"first_frame_image\": \"{{ $json.output[0] }}\"\n  }\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2352,
+        -16
+      ],
+      "id": "d059fd30-8e58-427f-a970-4dc3b5b1a5e2",
+      "name": "Request Video"
+    },
+    {
+      "parameters": {
+        "amount": "=10,00",
+        "unit": "minutes"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2576,
+        -16
+      ],
+      "id": "3d663863-eca8-4f5a-a8b9-fcb520d08cf8",
+      "name": "Wait for Video",
+      "webhookId": "1ad83054-b3f9-4074-aea7-cd9f5e0bb927"
+    },
+    {
+      "parameters": {
+        "url": "https://api.replicate.com/v1/predictions/{{ $(\"Request Video').item.json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_REPLICATE_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "wait"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"input\": {\n    \"prompt\": \"A vibrant, colorful lightbulb glowing amid a dark background, symbolizing fresh ideas, minimalist style, soft bokeh lights around, in the style of CNSTLL\",\n    \"prompt_optimizer\": true,\n    \"first_frame_image\": \"{{ $json.output[0] }}\"\n  }\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2800,
+        -16
+      ],
+      "id": "479dfc35-1eaa-4280-adbe-7735e6ebe4bf",
+      "name": "Get Video"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.cloudinary.com/v1_1/dohimxa2h/image/upload",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "file",
+              "value": "=data:audio/mp3;base64,{{ $json.audio_base64 }}"
+            },
+            {
+              "name": "upload_preset",
+              "value": "wp4l4tdq"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        976,
+        192
+      ],
+      "id": "4d378192-2bce-4ccd-8028-5b34f6073a11",
+      "name": "Upload to Cloudinary"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "Videos",
+        "include": "specifiedFields",
+        "fieldsToInclude": "output",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        3024,
+        -16
+      ],
+      "id": "8d8d8011-8b37-4aa1-b9a9-75d39c14f8cd",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {
+          "includeUnpaired": true
+        }
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3328,
+        144
+      ],
+      "id": "ed6030e7-4ff7-4c51-809c-e2240d4022bd",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://prod.0codekit.com/code/python",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "auth",
+              "value": "ghr9ozoxq1TX3X_D5A4lhELhl5pjJ-pHzZqAklMydgU"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "=def build_render_json(videos, audio_url):\nelements = [] current_time=0.0\nfade_duration=1.8\nInitialize the timeline cursor\nDuration of the fade effect in seconds\nAdd the background audio element.\nelements.append({\n}}\n\"type\": \"audio\",\n\"source\": audio_url,\nAdd video elements (each on track 1).\nfor index, video in enumerate(videos): video_element = {\n}\n\"type\": \"video\",\n\"source\": video[\"output\"].\n\"duration\": 5.8, # Default duration: 5 seconds\n\"time\": current_time,\n\"track\": 1,\n\"animations\": [\nAdd a fade-in effect to the first video.\nif index:\nvideo_element[\"animations\").append({ \"type\": \"fade\",\n}}\n\"duration\": fade_duration, \"easing\": \"linear\"\nelements.append(video_element)\ncurrent tine + 5.8 Increment timeline by video duration\n#Append a black shape element that overlaps slightly with the last clip.\nshape element={\nShape type for a rectangle\nPlace on the same track for proper transition\n\"time\": current_time-fade_duration, \"duration\": fade_duration + 1.0,\n\"type\": \"shape\", \"track\": 1,\n\"width\": \"100%\",\n\"height\":\"100\",\n\"x_anchor\": \"set\",\n\"y_anchor\": \"set\",\n#Full width\n= Full height\nstart slightly before the last clip ends Fade duration + extra time for visibility\n= Center horizontally\nCenter vertically\nI\n\"path\": \"100 L 100 100 L 100 Lee 2\", Rectangle path\n\"fill_color\": \"#000000\",\n\"animations\": [\n#Black color\n\"type\": \"fade\".\nFade effect\n\"duration\": fade_duration,\n\"transition\": True # Park as a transition animation\n}\nelements.append(shape_element)\n#Return the complete JSON configuration.\nreturn {\n\"source\": {\n\"output_format\":\n\"width\": 1080,\n\"height\": 1920,\n\"elements\": elements\n}\n}\n#nan variable expressions:\nvideos = json.loads(\"{{ 350.stringify($json.Videos) }}') audio_url = \"{{ $json.secure_url}}\"\nBuild the 350 configuration.\nrender_json = build_render_json(videos, audio_url)\nAssign to result so that nin returns it.\nresult = render_json"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3616,
+        128
+      ],
+      "id": "74fd8c29-727d-4a76-aead-aaa1c3a44195",
+      "name": "Create Editor JSON"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0176bf15-a54c-45a6-af5d-fb3f9a610434",
+              "name": "Creatomate Request",
+              "value": "{{ $json.result.source }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3824,
+        128
+      ],
+      "id": "48c0bf94-e61e-4a30-93dd-c703a19ac76d",
+      "name": "SET JSON VARIABLE"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.creatomate.com/v1/renders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 85cb04481c964c9bb59e7d18a3b3b1ad285e0c97e9e33bf93b8b7848ee20984392f1d597e0f70fe2b8be9b85ca9d6385"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "source",
+              "value": "{{ $json['Creatomate Request'] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4032,
+        128
+      ],
+      "id": "efde219b-700f-4a92-8bde-c7afdc1349ee",
+      "name": "Editor"
+    },
+    {
+      "parameters": {
+        "amount": 70
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4240,
+        128
+      ],
+      "id": "604f6945-1488-47f6-b379-cc2ffa6f07e7",
+      "name": "Rendering",
+      "webhookId": "b6adf68c-5228-4108-98d6-797507e23cfa"
+    },
+    {
+      "parameters": {
+        "url": "https://api.creatomate.com/v1/renders{{ $('Editor').item.json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 85cb04481c964c9bb59e7d18a3b3b1ad285e0c97e9e33bf93b8b7848ee20984392f1d597e0f70fe2b8be9b85ca9d6385"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4464,
+        128
+      ],
+      "id": "e967c121-28d7-45ee-af41-6f18ab76f285",
+      "name": "Get Final VIDEO"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Ideator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ideator": {
+      "main": [
+        [
+          {
+            "node": "Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Script": {
+      "main": [
+        [
+          {
+            "node": "Script Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Script Generator": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Upload to Cloudinary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Image Prompter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Image Prompter": {
+      "main": [
+        [
+          {
+            "node": "Request IMAGE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request IMAGE": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Get Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Image": {
+      "main": [
+        [
+          {
+            "node": "Request Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request Video": {
+      "main": [
+        [
+          {
+            "node": "Wait for Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Video": {
+      "main": [
+        [
+          {
+            "node": "Get Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Video": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Cloudinary": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Create Editor JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Editor JSON": {
+      "main": [
+        [
+          {
+            "node": "SET JSON VARIABLE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SET JSON VARIABLE": {
+      "main": [
+        [
+          {
+            "node": "Editor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Editor": {
+      "main": [
+        [
+          {
+            "node": "Rendering",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "4c07c39d-75bb-4524-b424-fd91c313ec51",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7e05551839b82cf16e8a44dac6519729d3aab1dbbc80f186b6098099617b652c"
+  },
+  "id": "HdbWOgziWSNtH0Gc",
+  "tags": []
+}
